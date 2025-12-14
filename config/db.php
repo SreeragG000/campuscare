@@ -30,5 +30,6 @@ try {
     echo 'Database connection error: ' . $e->getMessage();
     exit;
 }
-?>
+
+
 
