@@ -1,10 +1,10 @@
 <?php
 // config/db.php
 // Update these credentials for your environment.
-$DB_HOST = getenv('DB_HOST') ?: 'ftpupload.net';
-$DB_USER = getenv('DB_USER') ?: 'if0_40680244';
-$DB_PASS = getenv('DB_PASS') ?: 'PtdpsLL8fcf';
-$DB_NAME = getenv('DB_NAME') ?: 'if0_40680244_yadu';
+$DB_HOST = getenv('DB_HOST') ?: 'gateway01.ap-southeast-1.prod.aws.tidbcloud.com';
+$DB_USER = getenv('DB_USER') ?: '4HemRxYCqKos4PM.root';
+$DB_PASS = getenv('DB_PASS') ?: 'NlOYRtCpfIWeE2Nk';
+$DB_NAME = getenv('DB_NAME') ?: 'test';
 
 // Enable persistent connections
 $host_prefix = 'p:';
@@ -35,4 +35,5 @@ try {
     echo 'Database connection error.';
     exit;
 }
+
 ?>
