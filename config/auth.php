@@ -88,4 +88,3 @@ function purgeOldNotifications(mysqli $conn) {
         error_log("Failed to purge old notifications: " . $e->getMessage());
     }
 }
-?>
