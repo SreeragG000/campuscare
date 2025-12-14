@@ -2,7 +2,7 @@
 // views/partials/header.php
 require_once __DIR__ . '/../../config/init.php';
 
-if (session_status() === PHP_SESSION_NONE) {നു
+if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 $user = $_SESSION['user'] ?? null;
@@ -188,5 +188,6 @@ setTimeout(checkNewNotifications, 1000);
 </div>
 
 <main class="container">
+
 
 
