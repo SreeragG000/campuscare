@@ -25,3 +25,4 @@ function verify_csrf(): bool {
   if (!isset($_POST['csrf_token'])) return false;
   return hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
 }
+
