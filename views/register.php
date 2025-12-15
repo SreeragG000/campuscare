@@ -1,5 +1,4 @@
 <?php
-// views/register.php
 require_once __DIR__ . '/../includes/auth_logic.php';
 
 // If already logged in, redirect
@@ -56,3 +55,4 @@ include __DIR__ . '/partials/header.php';
 </div>
 
 <?php include __DIR__ . '/partials/footer.php'; ?>
+
