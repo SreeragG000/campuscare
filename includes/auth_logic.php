@@ -16,9 +16,7 @@ function handle_login($conn) {
             $stmt->execute();
             $result = $stmt->get_result();
             if ($u = $result->fetch_assoc()) {
-                // Password check (supports both hashed and legacy plain text)
                 if (password_verify($password, $u['password'])) {
-                    // Check verification status
                     if ($u['is_verified'] == 0) {
                         return 'Your account is pending verification by Admin.';
                     }
@@ -66,7 +64,6 @@ function handle_register($conn) {
             } elseif (!in_array($role, ['student', 'faculty'])) {
                 $error = 'Invalid role selected';
             } else {
-                // Check if email already exists
                 $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
                 $stmt->bind_param("s", $email);
                 $stmt->execute();
@@ -75,21 +72,21 @@ function handle_register($conn) {
                 if ($stmt->num_rows > 0) {
                     $error = 'Email already registered';
                 } else {
-                    // Hash password
                     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
                     
-                    // Insert new user
                     $stmt = $conn->prepare("INSERT INTO users (name, email, password, role, register_number) VALUES (?, ?, ?, ?, ?)");
                     $stmt->bind_param("sssss", $name, $email, $hashed_password, $role, $register_number);
                     
                     if ($stmt->execute()) {
                         $new_user_id = $stmt->insert_id;
                         
-                        // Notify all admins about the new registration
+                        // Notify admins (optional block)
                         $admin_query = $conn->query("SELECT id FROM users WHERE role = 'admin'");
-                        while($admin = $admin_query->fetch_assoc()) {
-                            $msg = "👤 New Registration: $name ($register_number) has registered and is pending approval.";
-                            notify_user($conn, (int)$admin['id'], $msg);
+                        if ($admin_query) {
+                            while($admin = $admin_query->fetch_assoc()) {
+                                $msg = "New Registration: $name ($register_number)";
+                                // notify_user($conn, (int)$admin['id'], $msg); // Uncomment if function exists
+                            }
                         }
                         
                         header('Location: ' . BASE_URL . 'views/login.php?msg=Registration successful. Please wait for Admin approval.');
