@@ -1,6 +1,8 @@
 <?php
 // config/auth.php
-if (session_status() === PHP_SESSION_NONE) session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 function ensure_logged_in() {
     if (!isset($_SESSION['user'])) {
