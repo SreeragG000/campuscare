@@ -10,7 +10,6 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $asset_name_id = (int)$_GET['delete'];
     
     try {
-        // Check if this asset name is being used by any assets
         $checkStmt = $conn->prepare("SELECT COUNT(*) as count FROM assets WHERE asset_name_id = ?");
         $checkStmt->bind_param("i", $asset_name_id);
         $checkStmt->execute();
@@ -53,20 +52,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             if ($asset_name_id > 0) {
-                // Edit existing asset name
                 $stmt = $conn->prepare("UPDATE asset_names SET name = ? WHERE id = ?");
                 $stmt->bind_param("si", $name, $asset_name_id);
                 $stmt->execute();
                 $message = 'Asset name updated successfully';
             } else {
-                // Add new asset name
                 $stmt = $conn->prepare("INSERT INTO asset_names (name) VALUES (?)");
                 $stmt->bind_param("s", $name);
                 $stmt->execute();
                 $message = 'Asset name added successfully';
             }
             $messageType = 'success';
-            $_POST = []; // Clear form
+            // Redirect to avoid form resubmission and clear POST
+            header('Location: ' . BASE_URL . 'views/admin/asset_names.php?msg=' . urlencode($message) . '&type=' . $messageType);
+            exit;
         } catch (Exception $e) {
             if (strpos($e->getMessage(), 'Duplicate entry') !== false) {
                 $message = 'This asset name already exists';
@@ -77,6 +76,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+// ✅ OPTIMIZATION: Close session early to prevent locking
+session_write_close();
 
 // Get asset name for editing if ID is provided
 $editAssetName = null;
@@ -89,14 +91,22 @@ if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
     $editAssetName = $result->fetch_assoc();
 }
 
-// Get asset names with usage count
-$assetNames = $conn->query("
+// ✅ OPTIMIZATION: Fetch all data ONCE
+$query = "
     SELECT an.*, COUNT(a.id) as usage_count
     FROM asset_names an
     LEFT JOIN assets a ON a.asset_name_id = an.id
     GROUP BY an.id
     ORDER BY an.name
-");
+";
+$result = $conn->query($query);
+$allAssetNames = $result->fetch_all(MYSQLI_ASSOC); // Fetch into array for reuse
+
+// Create a lookup array for the "Quick Add" section (Faster than DB queries)
+$existingNamesMap = [];
+foreach ($allAssetNames as $an) {
+    $existingNamesMap[strtolower($an['name'])] = true;
+}
 
 // Handle URL messages
 if (isset($_GET['msg'])) {
@@ -144,7 +154,7 @@ include __DIR__ . '/../partials/header.php';
 </div>
 
 <div class="table-card">
-    <h3 class="card-title">All Asset Names (<?= $assetNames->num_rows ?>)</h3>
+    <h3 class="card-title">All Asset Names (<?= count($allAssetNames) ?>)</h3>
     <div class="table-scroll">
         <table class="table">
             <thead>
@@ -156,8 +166,8 @@ include __DIR__ . '/../partials/header.php';
                 </tr>
             </thead>
             <tbody>
-                <?php if ($assetNames->num_rows > 0): ?>
-                    <?php while ($assetName = $assetNames->fetch_assoc()): ?>
+                <?php if (count($allAssetNames) > 0): ?>
+                    <?php foreach ($allAssetNames as $assetName): ?>
                         <tr>
                             <td><strong><?= htmlspecialchars($assetName['name']) ?></strong></td>
                             <td>
@@ -182,7 +192,7 @@ include __DIR__ . '/../partials/header.php';
                                 <?php endif; ?>
                             </td>
                         </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
                         <td colspan="4" style="text-align: center; color: #8fa0c9;">
@@ -211,20 +221,16 @@ include __DIR__ . '/../partials/header.php';
         ];
         
         foreach ($commonNames as $commonName):
-            // Check if it already exists
-            $checkStmt = $conn->prepare("SELECT id FROM asset_names WHERE name = ?");
-            $checkStmt->bind_param("s", $commonName);
-            $checkStmt->execute();
-            $exists = $checkStmt->get_result()->fetch_assoc();
+            // ✅ OPTIMIZED: Check against PHP array instead of DB query
+            if (!isset($existingNamesMap[strtolower($commonName)])): 
         ?>
-            <?php if (!$exists): ?>
-                <form method="post" style="display: inline;">
-                    <?= get_csrf_input() ?>
-                    <input type="hidden" name="name" value="<?= htmlspecialchars($commonName) ?>">
-                    <button type="submit" class="btn small outline" style="margin: 2px;">
-                        + <?= htmlspecialchars($commonName) ?>
-                    </button>
-                </form>
+            <form method="post" style="display: inline;">
+                <?= get_csrf_input() ?>
+                <input type="hidden" name="name" value="<?= htmlspecialchars($commonName) ?>">
+                <button type="submit" class="btn small outline" style="margin: 2px;">
+                    + <?= htmlspecialchars($commonName) ?>
+                </button>
+            </form>
             <?php endif; ?>
         <?php endforeach; ?>
     </div>
