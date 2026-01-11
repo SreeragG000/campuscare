@@ -1,6 +1,18 @@
 <?php
 require_once __DIR__ . '/../../config/init.php';
+// ✅ Missing file included
+require_once __DIR__ . '/../../config/room_utils.php'; 
+
 ensure_role('admin');
+
+// ✅ OPTIMIZATION 1: Handle Sync BEFORE fetching data
+// ടേബിൾ ലോഡ് ചെയ്യുന്നതിന് മുമ്പ് സിങ്ക് നടന്നാൽ, പുതിയ ഡാറ്റ താഴെ കാണാം.
+$sync_msg = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sync_exam_statuses'])) {
+    if (!verify_csrf()) die('CSRF validation failed');
+    $updated_count = syncAllExamReadyStatuses($conn);
+    $sync_msg = "Synchronized $updated_count exam room statuses.";
+}
 
 // Handle delete request
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
@@ -31,14 +43,14 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD']==='POST'){
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['sync_exam_statuses'])) {
     if (!verify_csrf()) die('CSRF validation failed');
     $building = trim($_POST['building']??'');
     $floor = trim($_POST['floor']??'');
     $room_no = trim($_POST['room_no']??'');
     $room_type = trim($_POST['room_type']??'classroom');
     $capacity = !empty($_POST['capacity']) ? (int)$_POST['capacity'] : null;
-    $notes = trim($_POST['notes']??''); // Remove default '-' value
+    $notes = trim($_POST['notes']??''); 
     
     if ($building && $room_no && $room_type){
         try {
@@ -46,7 +58,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
             
             // Insert into rooms table
             $stmt = $conn->prepare("INSERT INTO rooms(building,floor,room_no,room_type,capacity,notes) VALUES (?,?,?,?,?,?)");
-            // Fixed: notes should be string (s), not integer (i)
             $stmt->bind_param("ssssis",$building,$floor,$room_no,$room_type,$capacity,$notes);
             $stmt->execute();
             
@@ -59,6 +70,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
             
             $conn->commit();
             set_flash('ok','Room added successfully');
+            
+            // Redirect to prevent form resubmission
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit;
             
         } catch(Exception $e) {
             $conn->rollback();
@@ -106,14 +121,26 @@ include __DIR__.'/../partials/header.php';
     </form>
 </div>
 
+<div class="card" style="margin-top: 20px;">
+    <h3 class="card-title">Maintenance</h3>
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+        <p style="margin: 0; color: #8899ac;">Synchronize statuses if you suspect data mismatch:</p>
+        <form method="post" style="margin: 0;">
+            <?= get_csrf_input() ?>
+            <button type="submit" name="sync_exam_statuses" class="btn outline small">Sync All Statuses</button>
+        </form>
+    </div>
+    <?php if ($sync_msg): ?>
+        <div class="alert success" style="margin-top: 10px;"><?= htmlspecialchars($sync_msg) ?></div>
+    <?php endif; ?>
+</div>
+
 <div class="table-card">
     <h3 class="card-title">All Rooms</h3>
     <div class="table-scroll">
         <table class="table">
             <tr>
-                <th>ID</th>
                 <th>Building</th>
-                <th>Floor</th>
                 <th>Room</th>
                 <th>Type</th>
                 <th>Capacity</th>
@@ -123,56 +150,37 @@ include __DIR__.'/../partials/header.php';
             </tr>
             <?php while($r=$rooms->fetch_assoc()): ?>
             <tr>
-                <td><?= (int)$r['id'] ?></td>
                 <td><?= htmlspecialchars($r['building']) ?></td>
-                <td><?= htmlspecialchars($r['floor']) ?></td>
-                <td><?= htmlspecialchars($r['room_no']) ?></td>
+                <td>
+                    <span style="font-weight: bold; color: #fff;"><?= htmlspecialchars($r['room_no']) ?></span>
+                    <div style="font-size: 0.8em; color: #8899ac;">Floor: <?= htmlspecialchars($r['floor']) ?></div>
+                </td>
                 <td><?= htmlspecialchars($r['room_type']) ?></td>
                 <td><?= $r['capacity'] ? (int)$r['capacity'] : '-' ?></td>
                 <td><?= htmlspecialchars($r['notes'] ?: '-') ?></td>
                 <td>
                     <?php 
-                    // Display exam ready status only for exam rooms
+                    // ✅ OPTIMIZATION 2: No more heavy calculation inside loop!
+                    // Just use the value from DB (er.status_exam_ready)
                     if ($r['status_exam_ready'] !== null) {
-                        $calculated_status = isRoomExamReady($conn, $r['id'], $r['room_type']);
-                        $badge_class = $calculated_status === 'Yes' ? 'yes' : 'no';
-                        echo '<span class="badge ' . $badge_class . '">' . htmlspecialchars($calculated_status) . '</span>';
-                        
-                        // Show if stored status differs from calculated
-                        if ($r['status_exam_ready'] !== $calculated_status) {
-                            echo '<br><small class="text-muted">Stored: ' . htmlspecialchars($r['status_exam_ready']) . '</small>';
-                        }
+                        $badge_class = $r['status_exam_ready'] === 'Yes' ? 'yes' : 'no';
+                        echo '<span class="badge ' . $badge_class . '">' . htmlspecialchars($r['status_exam_ready']) . '</span>';
                     } else {
-                        echo '<span class="badge na">N/A</span>';
+                        // For non-exam rooms (toilets, offices etc)
+                        echo '<span class="badge na" style="opacity:0.5">N/A</span>';
                     }
                     ?>
                 </td>
                 <td>
                     <a href="?delete=<?= (int)$r['id'] ?>"
                        class="btn btn-small btn-danger"
-                       onclick="return confirm('Are you sure you want to delete this room? This will also remove it from exam_rooms if applicable.')">Delete</a>
+                       style="padding: 4px 8px; font-size: 0.8rem;"
+                       onclick="return confirm('Delete this room?')">Delete</a>
                 </td>
             </tr>
             <?php endwhile; ?>
         </table>
     </div>
-</div>
-
-<!-- Add sync button for maintenance -->
-<div class="card">
-    <h3 class="card-title">Maintenance</h3>
-    <p>Use this to synchronize exam room statuses with actual asset conditions:</p>
-    <form method="post">
-        <?= get_csrf_input() ?>
-        <button type="submit" name="sync_exam_statuses" class="btn outline">Sync All Exam Room Statuses</button>
-    </form>
-    
-    <?php if (isset($_POST['sync_exam_statuses'])): ?>
-        <?php 
-        $updated_count = syncAllExamReadyStatuses($conn);
-        ?>
-        <div class="alert success">Synchronized <?= $updated_count ?> exam room statuses.</div>
-    <?php endif; ?>
 </div>
 
 <?php include __DIR__.'/../partials/footer.php'; ?>
